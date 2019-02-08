@@ -1,7 +1,7 @@
 - hosts: localhost
   vars:
     state: present
-    osb_operators_image: docker.io/automationbroker/osb-operators
+    osb_operators_image: docker.io/jkig/osb-operators
   tasks:
     - name: service-catalog via marketplace state={{ state }}
       vars:

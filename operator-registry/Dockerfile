@@ -1,5 +1,5 @@
 # To build this, from catbrokers4 project root run:
-# docker build -t docker.io/automationbroker/osb-operators -f operator-registry/Dockerfile .
+# docker build -t docker.io/jkig/osb-operators -f operator-registry/Dockerfile .
 #
 # You can also build this image based on your fork:
 # docker build --build-arg ASB_REPO=djzager \
@@ -10,8 +10,8 @@ FROM quay.io/openshift/origin-operator-registry
 
 ARG ASB_REPO=openshift
 ARG ASB_BRANCH=master
-ARG TSB_REPO=openshift
-ARG TSB_BRANCH=master
+ARG TSB_REPO=johnkim76
+ARG TSB_BRANCH=fix_ssl_test
 
 USER root
 RUN yum -y install git
