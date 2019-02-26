@@ -1,25 +1,14 @@
 - hosts: localhost
   vars:
     state: present
-    osb_operators_image: docker.io/automationbroker/osb-operators
   tasks:
-    - name: service-catalog via marketplace state={{ state }}
+    - name: Service Catalog API Server from CVO - state={{ state }}
       vars:
-        name: svcat
-        namespace: openshift-operators
-        source: svcat
-        source_namespace: openshift-operators
-        package_name: svcat
-        starting_csv: svcat.v0.1.34
-        channel: alpha
+        name: cluster
+        logLevel: Normal
       k8s:
         state: "{{ state }}"
-        definition: "{{ lookup('template', item) | from_yaml }}"
-      loop:
-        - catalogsourceconfig.yaml.j2
-        - subscription.yaml.j2
-      loop_control:
-        pause: 2
+        definition: "{{ lookup('template', 'servicecatalogapiserver.yaml.j2')}}"
       tags: svcat
 
     - name: Wait for kube-service-catalog
@@ -31,100 +20,31 @@
       delay: 60
       tags: svcat
 
-    # TODO: Remove this when marketplace supports grpc catalogsource
-    - name: Create svcat rbac
+    - name: Service Catalog Controller Manager - state={{ state }}
       vars:
-        action: "{{ 'apply' if state == 'present' else 'delete' }}"
-      block:
-        # TODO: Uncomment when svcat master is fixed
-        # - name: Get aggregated roles
-        #   get_url:
-        #     url: https://raw.githubusercontent.com/openshift/service-catalog/master/manifests/02-aggregated-roles.yaml
-        #     dest: "{{ playbook_dir }}/files/svcat-aggregated-roles.yaml"
-        - name: Use kubectl
-          action: "shell sed 's|kube-service-catalog|openshift-operators|g' {{ playbook_dir }}/files/svcat-aggregated-roles.yaml | kubectl {{ action }} -f -"
+        name: cluster
+        logLevel: Normal
+      k8s:
+        state: "{{ state }}"
+        definition: "{{ lookup('template', 'servicecatalogcontrollermanager.yaml.j2')}}"
       tags: svcat
-
-    # TODO: Remove this when move to install from marketplace
-    - name: osb-operators catalog source state={{ state }}
-      vars:
-        name: osb-operators
-        image: "{{ osb_operators_image }}"
-      k8s:
-        state: "{{ state }}"
-        definition: "{{ lookup('template', 'catalogsource.yaml.j2') | from_yaml }}"
-
-    # TODO: Replace this with an install from marketplace
-    - name: ansible-service-broker state={{ state }}
-      vars:
-        name: ansible-service-broker
-        namespace: openshift-ansible-service-broker
-        source: osb-operators
-        source_namespace: openshift-operator-lifecycle-manager
-        package_name: automationbroker
-        starting_csv: automationbrokeroperator.v0.2.0
-        channel: alpha
-      k8s:
-        state: "{{ state }}"
-        definition: "{{ lookup('template', item) | from_yaml }}"
-      loop:
-        - namespace.yaml.j2
-        - operatorgroup.yaml.j2
-        - subscription.yaml.j2
-      loop_control:
-        pause: 2
-      tags: asb
-
-    # HACK: Create a ClusterRoleBinding that grants the ASB admin so that it can,
-    # in turn, grant APB SAs either admin or edit privileges. This was expected
-    # to be supported with OLM, but the current plan is for Marketplace to
-    # ship with this specific rule. Until that is implemented and available
-    # in marketplace, we need to add the workaround here.
-    # TODO: Rip this out once marketplace has support for granting the broker admin.
-    - name: Grant ansible-service-broker the admin clusterrole
-      vars:
-        broker_name: ansible-service-broker
-        broker_namespace: openshift-ansible-service-broker
-      k8s:
-        state: "{{ state }}"
-        definition: "{{ lookup('template', 'broker-admin.clusterrolebinding.yaml.j2') | from_yaml }}"
-      tags: asb
-
-    - name: Wait for automationbroker
-      when: state == 'present'
-      action: shell oc get crds | grep 'automationbrokers.osb.openshift.io'
-      register: cmd_result
-      until: cmd_result.rc == 0
-      retries: 10
-      delay: 60
-      tags: asb
-
-    - name: ansible-service-broker CR state={{ state }}
-      vars:
-        kind: AutomationBroker
-        name: ansible-service-broker
-        namespace: openshift-ansible-service-broker
-      k8s:
-        state: "{{ state }}"
-        definition: "{{ lookup('template', 'customresource.yaml.j2')}}"
-      tags: asb
 
     # TODO: Replace this with an install from marketplace
     - name: template-service-broker state={{ state }}
       vars:
-        name: template-service-broker
-        namespace: openshift-template-service-broker
-        source: osb-operators
-        source_namespace: openshift-operator-lifecycle-manager
+        name: templateservicebroker
+        namespace: template-service-broker
+        source: installed-community-template-service-broker
+        source_namespace: template-service-broker
         package_name: templateservicebroker
         starting_csv: templateservicebrokeroperator.v0.2.0
+        sub_name: templateservicebroker
         channel: alpha
       k8s:
         state: "{{ state }}"
         definition: "{{ lookup('template', item) | from_yaml }}"
       loop:
         - namespace.yaml.j2
-        - operatorgroup.yaml.j2
         - subscription.yaml.j2
       loop_control:
         pause: 2
@@ -143,8 +63,54 @@
       vars:
         kind: TemplateServiceBroker
         name: template-service-broker
-        namespace: openshift-template-service-broker
+        namespace: template-service-broker
       k8s:
         state: "{{ state }}"
         definition: "{{ lookup('template', 'customresource.yaml.j2')}}"
       tags: tsb
+
+    # HACK: Create a ClusterRoleBinding that grants the ASB admin so that it can,
+    # in turn, grant APB SAs either admin or edit privileges. This was expected
+    # to be supported with OLM, but the current plan is for Marketplace to
+    # ship with this specific rule. Until that is implemented and available
+    # in marketplace, we need to add the workaround here.
+    # TODO: Rip this out once marketplace has support for granting the broker admin.
+    - name: ansible-service-broker state={{ state }}
+      vars:
+        name: ansibleservicebroker
+        namespace: ansible-service-broker
+        source: installed-community-ansible-service-broker
+        source_namespace: ansible-service-broker
+        package_name: automationbroker
+        starting_csv: automationbrokeroperator.v0.2.0
+        sub_name: automationbroker
+        channel: alpha
+      k8s:
+        state: "{{ state }}"
+        definition: "{{ lookup('template', item) | from_yaml }}"
+      loop:
+        - namespace.yaml.j2
+        - broker-admin.clusterrolebinding.yaml.j2
+        - subscription.yaml.j2
+      loop_control:
+        pause: 2
+      tags: asb
+
+    - name: Wait for automationbroker
+      when: state == 'present'
+      action: shell oc get crds | grep 'automationbrokers.osb.openshift.io'
+      register: cmd_result
+      until: cmd_result.rc == 0
+      retries: 10
+      delay: 60
+      tags: asb
+
+    - name: ansible-service-broker CR state={{ state }}
+      vars:
+        kind: AutomationBroker
+        name: ansible-service-broker
+        namespace: ansible-service-broker
+      k8s:
+        state: "{{ state }}"
+        definition: "{{ lookup('template', 'customresource.yaml.j2')}}"
+      tags: asb
